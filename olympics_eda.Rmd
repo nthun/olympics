@@ -2,61 +2,77 @@
 title: "Olympics analysis"
 author: "Tamas Nagy"
 date: "10/20/2021"
-output: html_document
+output: 
+  html_document:
+   theme: spacelab
+   code_download: true
+   toc: true
+   toc_float: true
+---
+
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
 library(tidyverse)
 
 theme_set(theme_light())
 
 ```
+# Summary
 
-```{r}
+In this project, I will explore the olympics 
+
 # Read data
+
+We can read the data directly from Github.
+```{r}
 olympics <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-07-27/olympics.csv')
 
 ```
 
+Create a new BMI variable
 ```{r}
 olympics <-
     olympics %>% 
     mutate(bmi = weight / (height/100)^2)
 ```
 
+# Some descriptive statistics about the Olympics. 
+
 How many olympics have been between 1896-2016?
 ```{r}
-# Events
 olympics %>% 
     distinct(games, .keep_all = TRUE) %>% 
     count(season)
+```
 
-# Athletes
+Olympic athletes
+```{r}
 olympics %>% 
     count(season)
+```
 
-# City
+Olympic cities
+```{r}
+
 olympics %>% 
     distinct(games, .keep_all = TRUE) %>% 
     count(city, sort = TRUE)
 
 ```
 
-```{r}
-set.seed(123)
+# Did the size of athletes change over time?
 
-olympics %>% 
-    drop_na(height) %>% 
-    sample_n(10000) %>% 
-    ggplot() +
-    aes(x = year, y = height, color = sex) +
-    geom_jitter(size = 1, height = 0, alpha = .5) +
-    geom_smooth(method = "lm") +
-    labs(x = NULL,
-         y = "Height (cm)",
-         title = "Height of olympic athletes over the years (10k random athletes)",
-         subtitle = "Both males and females show an increase over time.")
+Sample 10,000 random athletes, and check how height and weight changed over the years by sex.
+
+```{r}
+# This is needed to keep the result the same even after random sampling
+set.seed(123)
 
 olympics %>% 
     drop_na(height, weight) %>% 
@@ -79,6 +95,8 @@ olympics %>%
 
 ```
 
+# Average age of athletes who won a medal over time
+
 ```{r}
 olympics %>% 
     drop_na(medal, age) %>% 
@@ -91,24 +109,63 @@ olympics %>%
         ymin = avg_age - se_age,
         ymax = avg_age + se_age) +
     geom_ribbon(alpha = .2) +
-    geom_line(size = 1.2, color = "red")
+    geom_line(size = 1.2, color = "red") +
+    labs(title = "Average age of athletes who won a medal",
+         subtitle = "Grey ribbon represents standard error.",
+         y = "Age (years)",
+         x = NULL)
     
 
 ```
 
+# Which sports were included in the Olympics the most often?
+
 ```{r}
 olympics %>% 
-    distinct(year, sport) %>% 
-    count(sport, sort = TRUE) %>% 
-    mutate(sport = fct_reorder(sport, n)) %>% 
+    distinct(year, season, sport) %>% 
+    count(season, sport, sort = TRUE) %>% 
+    # To sort by frequency, 
+    mutate(sport = fct_reorder(sport, n, sum)) %>% 
     ggplot() +
     aes(y = sport, x = n, fill = sport) +
     geom_col(show.legend = FALSE) +
     scale_fill_viridis_d(option = "magma") +
+    facet_wrap(~season, scales = "free_y") +
     labs(y = NULL,
          title = "Nr of times when sport was included",
+         caption = "Figure Skating and Ice Hockey were also part of the Summer games in 1908 London, and 1920 Antwerpen", 
          x = "Nr")
     
+# Which summer olympics included Figure Skating and Ice Hockey?
+olympics %>% 
+    filter(season == "Summer", sport %in% c("Figure Skating", "Ice Hockey")) %>% 
+    distinct(games, city)
 
 ```
 
+# Countries with the most athletes
+
+```{r}
+library(ggmap)
+library(countrycode)
+library(ggthemes)
+
+olympics_world <-
+    map_data(map = "world") %>% 
+    mutate(noc = countryname(sourcevar = region, destination = "ioc")) %>% 
+    left_join(count(olympics, noc), by = "noc") %>% 
+    filter(region != "Antarctica")
+
+olympics_world %>% 
+    ggplot() +
+    aes(map_id = region, long, lat, label = n) +
+    geom_map(map = olympics_world,
+             aes(fill =  log10(n))) +
+    theme_map() +
+    coord_quickmap() +
+    labs(title = "The number of athletes sent to all olympics by each country.",
+         subtitle = "There are a few countries that sent tens of thousands of athletes, but also a few that sent only tens at maximum.",
+         x = NULL, y = NULL,
+         fill = "Magnitude of athletes (10^x)")
+
+```
